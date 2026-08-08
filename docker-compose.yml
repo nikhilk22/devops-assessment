@@ -1,23 +1,66 @@
+# =============================================================================
+# VexarDrive Fleet Ping Service — Docker Compose (Development / Local Testing)
+#
+# NOTE: This compose file is for LOCAL DEVELOPMENT ONLY.
+# In production, secrets come from Azure Key Vault via Managed Identity.
+# Database credentials are provided as environment variables here for
+# local convenience; in CI/CD they are injected from GitHub Secrets.
+# =============================================================================
+
 version: "3.8"
 
 services:
   app:
-    build: .
+    build:
+      context: ./src
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"  # Bind to localhost only — not 0.0.0.0
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=vexar_fleet
+      - DB_PASSWORD=${DB_PASSWORD:-changeme_local_dev}
+      - DB_NAME=vexar_fleet
+      - DB_SSL=false
+      - DB_POOL_MAX=10
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-not-for-production}
+      - JWT_EXPIRY=24h
+      - PORT=3000
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    # Security: read-only root filesystem
+    read_only: true
+    tmpfs:
+      - /tmp
 
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     ports:
-      - "0.0.0.0:5432:5432"
+      - "127.0.0.1:5432:5432"  # Not exposed to all interfaces
     environment:
-      - POSTGRES_USER=vexaradmin
-      - POSTGRES_PASSWORD=V3xar@2024!Prod
+      - POSTGRES_USER=vexar_fleet
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme_local_dev}
       - POSTGRES_DB=vexar_fleet
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./src/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vexar_fleet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
 
 volumes:
   pgdata:
