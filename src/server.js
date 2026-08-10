@@ -1,4 +1,4 @@
-// VexarDrive - Fleet Ping Service (Production-Ready Version)
+// VexarDrive - Fleet Ping Service
 // Improvements: connection pooling, no hardcoded secrets, SQL injection prevention,
 // auth middleware, health/readiness endpoints, structured logging, rate limiting
 
