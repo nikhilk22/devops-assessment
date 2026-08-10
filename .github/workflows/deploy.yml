@@ -1,6 +1,11 @@
 # =============================================================================
 # VexarDrive Fleet Ping Service — CI/CD Pipeline
 # Flow: Test → Lint → Security Scan → Build → Containerize → Push → Deploy → Verify
+#
+# Infrastructure provisioning (infra/terraform/core) is done ONCE per environment
+# via the separate "provision-infrastructure" workflow (or manually). This
+# pipeline handles application BUILD + DEPLOY via the split infra/terraform/app
+# config, which reads the shared infrastructure back by name.
 # =============================================================================
 
 name: Fleet Ping Service CI/CD
@@ -8,6 +13,7 @@ name: Fleet Ping Service CI/CD
 on:
   push:
     branches: [main, develop]
+    paths-ignore: ["infra/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -18,6 +24,15 @@ on:
         default: "staging"
         type: choice
         options:
+          - staging
+          - production
+      target_env:
+        description: "Environment to provision shared infra to (infrastructure job only)"
+        required: false
+        default: "staging"
+        type: choice
+        options:
+          - dev
           - staging
           - production
 
@@ -51,7 +66,7 @@ jobs:
       - name: Run linter
         run: npm run lint
         working-directory: src/
-        continue-on-error: true  # Assessment: lint warnings don't block
+        continue-on-error: true  # lint warnings don't block
 
       - name: Run tests
         run: npm test
@@ -76,7 +91,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scan (filesystem)
+      - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
@@ -91,23 +106,17 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-      - name: Check for critical vulnerabilities
-        run: |
-          echo "Security scan complete. Review results in Security tab."
-
   # ---------------------------------------------------------------------------
-  # Job 3: Build & Containerize
+  # Job 3: Build & Push Container
   # ---------------------------------------------------------------------------
   build:
     name: Build & Push Container
     needs: security-scan
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-
     permissions:
       contents: read
       packages: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,7 +134,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
             type=sha,format=short
             type=ref,event=branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
@@ -140,7 +148,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan container image with Trivy
+      - name: Trivy container image scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
@@ -156,18 +164,16 @@ jobs:
           sarif_file: trivy-image.sarif
 
   # ---------------------------------------------------------------------------
-  # Job 4: Deploy to Staging (automatic)
+  # Job 4: Deploy to Staging (automatic) — app config only
   # ---------------------------------------------------------------------------
   deploy-staging:
     name: Deploy to Staging
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-
     environment:
       name: staging
       url: ${{ steps.deploy.outputs.app_url }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -177,41 +183,43 @@ jobs:
         with:
           terraform_version: 1.7.0
 
-      - name: Terraform Init (Staging)
-        working-directory: infra/terraform
+      # Deploy ONLY the app config (infra is provisioned once via core config)
+      - name: Terraform Init (app/staging)
+        working-directory: infra/terraform/app
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ secrets.TF_STATE_RG }}" \
             -backend-config="storage_account_name=${{ secrets.TF_STATE_SA }}" \
             -backend-config="container_name=tfstate" \
-            -backend-config="key=staging-fleet-ping.tfstate"
+            -backend-config="key=app-staging-fleet-ping.tfstate"
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Terraform Apply (Staging)
-        working-directory: infra/terraform
+      - name: Terraform Apply (app/staging)
         id: deploy
+        working-directory: infra/terraform/app
         run: |
           terraform apply -auto-approve \
             -var="environment=staging" \
+            -var="key_vault_name=${{ secrets.KEY_VAULT_NAME_STAGING }}" \
             -var="container_image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
-            -var="alert_email=${{ secrets.ALERT_EMAIL }}"
+            -var-file=environments/staging.tfvars
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Verify deployment
+      - name: Verify staging deployment
         run: |
           sleep 30
-          curl -f https://${{ steps.deploy.outputs.app_url }}/health || echo "Deployment verification pending"
+          curl -fsS "https://${{ steps.deploy.outputs.app_url }}/ready" || echo "Deployment verification pending"
 
   # ---------------------------------------------------------------------------
-  # Job 5: Deploy to Production (manual approval gate)
+  # Job 5: Deploy to Production (manual approval gate). app config only
   # ---------------------------------------------------------------------------
   deploy-production:
     name: Deploy to Production
@@ -221,8 +229,6 @@ jobs:
     environment:
       name: production
       url: ${{ steps.deploy.outputs.app_url }}
-
-    # Manual approval gate configured in GitHub Environments
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -232,40 +238,37 @@ jobs:
         with:
           terraform_version: 1.7.0
 
-      - name: Terraform Init (Production)
-        working-directory: infra/terraform
+      - name: Terraform Init (app/production)
+        working-directory: infra/terraform/app
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ secrets.TF_STATE_RG }}" \
             -backend-config="storage_account_name=${{ secrets.TF_STATE_SA }}" \
             -backend-config="container_name=tfstate" \
-            -backend-config="key=production-fleet-ping.tfstate"
+            -backend-config="key=app-production-fleet-ping.tfstate"
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Terraform Plan (Production)
-        working-directory: infra/terraform
+      - name: Terraform Plan (app/production)
+        working-directory: infra/terraform/app
         run: |
           terraform plan -out=tfplan \
             -var="environment=production" \
+            -var="key_vault_name=${{ secrets.KEY_VAULT_NAME_PROD }}" \
             -var="container_image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
-            -var="db_sku=GP_Standard_D2ds_v4" \
-            -var="db_backup_retention_days=30" \
-            -var="app_min_replicas=2" \
-            -var="app_max_replicas=20" \
-            -var="alert_email=${{ secrets.ALERT_EMAIL }}"
+            -var-file=environments/production.tfvars
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Terraform Apply (Production)
-        working-directory: infra/terraform
+      - name: Terraform Apply (app/production)
         id: deploy
+        working-directory: infra/terraform/app
         run: terraform apply -auto-approve tfplan
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -273,37 +276,65 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Verify deployment
+      - name: Verify production deployment
         run: |
           sleep 60
-          curl -f https://${{ steps.deploy.outputs.app_url }}/ready || echo "Production verification pending"
+          curl -fsS "https://${{ steps.deploy.outputs.app_url }}/ready" || echo "Production verification pending"
 
       - name: Smoke test — ping endpoint
         run: |
-          curl -s -X POST https://${{ steps.deploy.outputs.app_url }}/api/fleet/ping \
+          curl -s -X POST "https://${{ steps.deploy.outputs.app_url }}/api/fleet/ping" \
             -H "Content-Type: application/json" \
             -d '{"vehicleId":"test-001","lat":37.7749,"lng":-122.4194,"speed":0}' || echo "Smoke test pending"
 
   # ---------------------------------------------------------------------------
-  # Job 6: Rollback (manual workflow dispatch)
+  # Job 6: Provision / change shared infrastructure (run rarely, manual)
   # ---------------------------------------------------------------------------
-  rollback:
-    name: Rollback Deployment
+  provision-infrastructure:
+    name: Provision Infrastructure (core)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'rollback'
-
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_env != ''
+    environment:
+      name: infrastructure
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rollback to previous Terraform state
-        working-directory: infra/terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init (core)
+        working-directory: infra/terraform/core
         run: |
-          terraform init
-          terraform plan -destroy -out=tfplan \
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=core-fleet-ping.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Terraform Apply (core)
+        working-directory: infra/terraform/core
+        run: |
+          terraform apply -auto-approve \
             -var="environment=${{ github.event.inputs.target_env }}" \
-            -var="container_image=placeholder"
-          echo "Rollback would apply the previous known-good state"
-          # In production, you would maintain state versioning and
-          # apply the previous state, or use a blue/green deployment
-          # to switch traffic back to the previous revision
+            -var-file=environments/${{ github.event.inputs.target_env }}.tfvars
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Capture key vault name
+        id: kv
+        working-directory: infra/terraform/core
+        run: |
+          echo "key_vault_name=$(terraform output -raw key_vault_name)" >> $GITHUB_ENV
+          echo "The key vault name is: $(terraform output -raw key_vault_name)"
+          # Store this as a GitHub secret (KEY_VAULT_NAME_STAGING/PROD) for use by app deploys
