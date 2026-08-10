@@ -246,6 +246,9 @@ resource "azurerm_monitor_action_group" "critical" {
   }
 }
 
+# ------------------------------------------------------------------------------
+# high_cpu alert
+# ------------------------------------------------------------------------------
 resource "azurerm_monitor_metric_alert" "high_cpu" {
   name                = "vexar-${var.environment}-high-cpu"
   resource_group_name = data.azurerm_resource_group.main.name
@@ -266,6 +269,9 @@ resource "azurerm_monitor_metric_alert" "high_cpu" {
   tags = local.tags
 }
 
+# ------------------------------------------------------------------------------
+# high_memory alert
+# ------------------------------------------------------------------------------
 resource "azurerm_monitor_metric_alert" "high_memory" {
   name                = "vexar-${var.environment}-high-memory"
   resource_group_name = data.azurerm_resource_group.main.name
@@ -286,6 +292,9 @@ resource "azurerm_monitor_metric_alert" "high_memory" {
   tags = local.tags
 }
 
+# ------------------------------------------------------------------------------
+# max_replica alert
+# ------------------------------------------------------------------------------
 resource "azurerm_monitor_metric_alert" "max_replicas" {
   name                = "vexar-${var.environment}-max-replicas"
   resource_group_name = data.azurerm_resource_group.main.name
