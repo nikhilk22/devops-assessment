@@ -37,6 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_fleet_pings_ts ON fleet_pings(ts);
 CREATE INDEX IF NOT EXISTS idx_fleet_pings_vehicle_ts ON fleet_pings(vehicle_id, ts);
 
 -- Auto-update updated_at timestamp
+-- a function that sets updated_at to the current time whenever a row is updated 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -45,6 +46,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Attaches the function as a trigger to the drivers table
+-- Ensures updated_at always reflects the last modification time automatically
 CREATE TRIGGER trg_drivers_updated_at
   BEFORE UPDATE ON drivers
   FOR EACH ROW
