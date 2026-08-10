@@ -230,6 +230,10 @@ resource "azurerm_monitor_diagnostic_setting" "container_app" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# sets up an alert notification group so that when something critical happens, 
+# Azure Monitor can send an email to the on-call team.
+# -----------------------------------------------------------------------------
 resource "azurerm_monitor_action_group" "critical" {
   name                = "vexar-${var.environment}-critical-ag"
   resource_group_name = data.azurerm_resource_group.main.name
