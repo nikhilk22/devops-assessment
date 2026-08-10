@@ -1,0 +1,11 @@
+environment        = "dev"
+location           = "East US"
+container_image    = "ghcr.io/vexardrive/fleet-ping-service:latest"
+db_sku             = "B_Standard_B1ms"
+db_storage_mb      = 32768
+app_cpu            = 0.25
+app_memory         = "0.5Gi"
+app_min_replicas   = 1
+app_max_replicas   = 3
+log_retention_days = 7
+alert_email        = "dev-team@vexardrive.com"
