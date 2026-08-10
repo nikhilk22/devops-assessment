@@ -1,0 +1,11 @@
+environment        = "staging"
+location           = "East US"
+container_image    = "ghcr.io/vexardrive/fleet-ping-service:latest"
+db_sku             = "B_Standard_B1ms"
+db_storage_mb      = 65536
+app_cpu            = 0.5
+app_memory         = "1Gi"
+app_min_replicas   = 1
+app_max_replicas   = 5
+log_retention_days = 14
+alert_email        = "staging-team@vexardrive.com"
