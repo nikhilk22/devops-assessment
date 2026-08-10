@@ -198,7 +198,9 @@ resource "azurerm_container_app" "fleet_ping" {
 }
 
 # ---------------------------------------------------------------------------
-# Grant the Container App's identity read access to Key Vault secrets
+# Grant the Container App's identity read access to Key Vault secrets.
+# It ensures that your Azure Container App can securely fetch secrets (like DB_PASSWORD and JWT_SECRET) 
+# from the Key Vault at runtime, without needing hardcoded credentials.
 # ---------------------------------------------------------------------------
 resource "azurerm_key_vault_access_policy" "container_app" {
   key_vault_id      = data.azurerm_key_vault.main.id
