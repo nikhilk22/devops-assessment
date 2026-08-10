@@ -1,6 +1,6 @@
 # =============================================================================
 # VexarDrive Fleet Ping Service — Production Dockerfile
-# Multi-stage build: separate install from runtime for minimal attack surface
+# used Multi-stage build to separate install from runtime for minimal attack surface
 # =============================================================================
 
 # ---- Stage 1: Build ----
