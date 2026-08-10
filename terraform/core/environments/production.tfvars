@@ -1,6 +1,6 @@
-environment        = "production"
-app_cpu            = 1.0
-app_memory         = "2Gi"
-app_min_replicas   = 2
-app_max_replicas   = 20
-alert_email        = "oncall@vexardrive.com"
+environment         = "production"
+location            = "East US"
+db_sku               = "GP_Standard_D2ds_v4"
+db_storage_mb       = 262144
+db_backup_retention_days = 30
+log_retention_days  = 90
