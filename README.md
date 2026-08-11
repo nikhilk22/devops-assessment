@@ -1,112 +1,40 @@
-# Fleet Ping Service
+Overview
+This repository contains the complete solution for the VexarDrive Technologies DevOps & Cloud Infrastructure Engineer Technical Assessment.
 
-The Fleet Ping Service is a Node.js/Express backend service used to receive vehicle location updates and handle driver authentication.
+The solution demonstrates production-readiness improvements to a Node.js/Express Fleet Ping Service, including:
 
-The service uses PostgreSQL for persistent storage and is containerized using Docker.
+- Security hardening — eliminated hardcoded secrets, SQL injection, auth bypasses
+- Containerization — multi-stage Docker build, non-root user, health checks
+- Azure Infrastructure as Code — Terraform for Container Apps + PostgreSQL + Key Vault
+- CI/CD Pipeline — GitHub Actions with test → scan → build → deploy → verify
+- Monitoring — health/readiness endpoints, structured logging, Azure Monitor alerts
+- Database operations — connection pooling, PITR, least-privilege access
+- Architecture diagram — component interactions and network boundaries
+- Technical report — comprehensive documentation of all decisions
 
-## Technology Stack
-
-* Node.js
-* Express.js
-* PostgreSQL
-* Docker
-* GitHub Actions
-
-## API Endpoints
-
-The service currently provides endpoints for:
-
-* Driver login
-* Vehicle location ping ingestion
-* Fleet ping retrieval
-
-Refer to the application source for endpoint definitions, request formats, and current behavior.
-
-## Prerequisites
-
-To run the service locally, ensure you have:
-
-* Node.js
-* npm
-* PostgreSQL
-
-Alternatively, the application and database can be started using Docker Compose.
-
-## Local Setup
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Configure the required environment variables using the provided environment configuration.
-
-Start the application:
-
-```bash
-node server.js
-```
-
-The service will start on the configured application port.
-
-## Database
-
-The service uses PostgreSQL.
-
-The initial database structure is available in:
-
-```text
-schema.sql
-```
-
-Apply the schema to your local PostgreSQL instance before running the application.
-
-## Docker
-
-The repository includes:
-
-```text
-Dockerfile
-docker-compose.yml
-```
-
-To start the application using Docker Compose:
-
-```bash
-docker compose up --build
-```
-
-## Configuration
-
-Application configuration is managed through environment variables.
-
-Review the existing configuration and application source to determine the variables required to run the service.
-
-## CI/CD
-
-A GitHub Actions workflow is included in the repository.
-
-Changes pushed to the `main` branch currently trigger the configured deployment workflow.
-
-## Repository Structure
-
-```text
-.
+Repository Structure
+vexar-drive-solution/
 ├── .github/
 │   └── workflows/
-├── Dockerfile
-├── docker-compose.yml
-├── schema.sql
-├── server.js
-├── package.json
-└── README.md
-```
-
-## Assessment Context
-
-This repository is provided as part of the **VexarDrive Technologies DevOps & Cloud Infrastructure Engineer Technical Assessment**.
-
-Review the repository in its current state before making changes.
-
-Your assessment brief contains the requirements, expected deliverables, and submission instructions.
+│       └── ci-cd.yml              # CI/CD pipeline (GitHub Actions)
+├── src/
+│   ├── server.js                  # Production-ready application
+│   ├── package.json               # Dependencies
+│   ├── schema.sql                 # Database schema with indexes
+│   ├── Dockerfile                 # Multi-stage production Dockerfile
+│   └── .dockerignore              # Excludes from Docker build context
+├── infra/
+│   ├── core/    → INFRASTRUCTURE PROVISIONING (runs rarely)
+│   |     ├── main.tf      
+│   |     ├── variables.tf
+│   |     ├── outputs.tf    
+│   |     └── environments/ (dev/staging/production tfvars)
+│   |
+|   └── app/     → APPLICATION DEPLOYMENT (runs on every CI/CD deploy)
+│        ├── main.tf      
+│        ├── variables.tf
+│        ├── outputs.tf
+│        └── environments/ (dev/staging/production tfvars) 
+|
+├── docker-compose.yml             # Local development setup
+└── README.md                      # This file
