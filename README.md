@@ -13,6 +13,7 @@ The solution demonstrates production-readiness improvements to a Node.js/Express
 - Technical report — comprehensive documentation of all decisions
 
 Repository Structure
+
 vexar-drive-solution/
 ├── .github/
 │   └── workflows/
